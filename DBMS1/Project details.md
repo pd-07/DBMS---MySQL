@@ -1,3 +1,3 @@
-DDL, DML, DQL, DCL, TCL 
-MySQL functions
-JOINS
+# DDL, DML, DQL, DCL, TCL 
+# MySQL functions
+# JOINS
