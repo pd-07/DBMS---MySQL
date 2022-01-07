@@ -1,0 +1,3 @@
+# Subqueries
+# Windows functions 
+# Normalization 
