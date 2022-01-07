@@ -1,0 +1,151 @@
+CREATE DATABASE DBMS2_MINI_PROJ;
+USE DBMS2_MINI_PROJ;
+
+SELECT * FROM CUST_DIMEN;
+SELECT * FROM MARKET_FACT;
+SELECT * FROM ORDERS_DIMEN;
+SELECT * FROM PROD_DIMEN;
+SELECT * FROM SHIPPING_DIMEN;
+
+
+# 1. Join all the tables and create a new table called combined_table.
+# (market_fact, cust_dimen, orders_dimen, prod_dimen, shipping_dimen)
+CREATE TABLE COMBINED_TABLE 
+AS 
+SELECT DISTINCT OD.ORD_ID, OD.ORDER_DATE, OD.ORDER_ID, OD.ORDER_PRIORITY, 
+PD.PROD_ID, PD.PRODUCT_CATEGORY, PD.PRODUCT_SUB_CATEGORY, MF.SHIP_ID, SD.SHIP_DATE, SD.SHIP_MODE, 
+CD.CUST_ID, CD.CUSTOMER_NAME, CD.CUSTOMER_SEGMENT, CD.PROVINCE, CD.REGION, 
+MF.SALES, MF.DISCOUNT, MF.ORDER_QUANTITY, MF.PROFIT, MF.SHIPPING_COST, MF.PRODUCT_BASE_MARGIN
+FROM CUST_DIMEN CD 
+JOIN MARKET_FACT MF 
+ON CD.CUST_ID = MF.CUST_ID 
+JOIN ORDERS_DIMEN OD 
+ON MF.ORD_ID = OD.ORD_ID 
+JOIN PROD_DIMEN PD 
+ON MF.PROD_ID = PD.PROD_ID 
+JOIN SHIPPING_DIMEN SD 
+ON MF.SHIP_ID = SD.SHIP_ID 
+WHERE OD.ORDER_ID = SD.ORDER_ID; 
+
+SELECT * FROM COMBINED_TABLE; 
+
+
+
+# 2. Find the top 3 customers who have the maximum number of orders
+SELECT CUST_ID, CUSTOMER_NAME, NO_OF_ORDERS 
+FROM (SELECT CUST_ID, CUSTOMER_NAME, NO_OF_ORDERS, DENSE_RANK() OVER(ORDER BY NO_OF_ORDERS DESC) RNK
+FROM (SELECT DISTINCT MF.CUST_ID, CD.CUSTOMER_NAME, COUNT(DISTINCT MF.ORD_ID) NO_OF_ORDERS
+FROM MARKET_FACT MF 
+JOIN CUST_DIMEN CD 
+ON MF.CUST_ID = CD.CUST_ID 
+GROUP BY CUST_ID) A) B
+WHERE RNK < 4;
+
+
+
+# 3. Create a new column DaysTakenForDelivery that contains the date difference of Order_Date and Ship_Date.
+SELECT DISTINCT OD.ORD_ID, MF.PROD_ID, CD.CUST_ID, CD.CUSTOMER_NAME, OD.ORDER_DATE, MF.SHIP_ID, SD.SHIP_DATE, SD.SHIP_MODE, 
+abs(datediff(str_to_date(OD.ORDER_DATE, '%d-%m-%Y'), str_to_date(SD.SHIP_DATE, '%d-%m-%Y'))) DaysTakenForDelivery
+FROM CUST_DIMEN CD 
+JOIN MARKET_FACT MF 
+ON CD.CUST_ID = MF.CUST_ID 
+JOIN ORDERS_DIMEN OD 
+ON MF.ORD_ID = OD.ORD_ID 
+JOIN SHIPPING_DIMEN SD 
+ON MF.SHIP_ID = SD.SHIP_ID 
+WHERE OD.ORDER_ID = SD.ORDER_ID; 
+
+
+
+# 4. Find the customer whose order took the maximum time to get delivered.
+SELECT ORD_ID, PROD_ID, CUST_ID, CUSTOMER_NAME, ORDER_DATE, SHIP_ID, SHIP_DATE, SHIP_MODE, DaysTakenForDelivery 
+FROM (SELECT *, DENSE_RANK() OVER(ORDER BY DaysTakenForDelivery DESC) RNK
+FROM (SELECT DISTINCT OD.ORD_ID, MF.PROD_ID, CD.CUST_ID, CD.CUSTOMER_NAME, OD.ORDER_DATE, MF.SHIP_ID, SD.SHIP_DATE, SD.SHIP_MODE, 
+abs(datediff(str_to_date(OD.ORDER_DATE, '%d-%m-%Y'), str_to_date(SD.SHIP_DATE, '%d-%m-%Y'))) DaysTakenForDelivery
+FROM CUST_DIMEN CD 
+JOIN MARKET_FACT MF 
+ON CD.CUST_ID = MF.CUST_ID 
+JOIN ORDERS_DIMEN OD 
+ON MF.ORD_ID = OD.ORD_ID 
+JOIN SHIPPING_DIMEN SD 
+ON MF.SHIP_ID = SD.SHIP_ID 
+WHERE OD.ORDER_ID = SD.ORDER_ID) A) B 
+WHERE RNK = 1;
+
+
+
+# 5. Retrieve total sales made by each product from the data (use Windows function)
+SELECT DISTINCT cast(MF.PROD_ID AS CHAR(10)) PROD_ID, PD.PRODUCT_CATEGORY, PD.PRODUCT_SUB_CATEGORY, 
+ROUND(SUM((MF.SALES - (MF.SALES * MF.DISCOUNT)) * MF.ORDER_QUANTITY) OVER(PARTITION BY cast(MF.PROD_ID AS CHAR(10))), 2) TOTAL_SALES 
+FROM MARKET_FACT MF 
+JOIN PROD_DIMEN PD 
+ON MF.PROD_ID = PD.PROD_ID;
+
+
+
+# 6. Retrieve total profit made from each product from the data (use windows function)
+SELECT DISTINCT cast(MF.PROD_ID AS CHAR(10)) PROD_ID, PD.PRODUCT_CATEGORY, PD.PRODUCT_SUB_CATEGORY, 
+ROUND(SUM(MF.PROFIT) OVER(PARTITION BY cast(MF.PROD_ID AS CHAR(10))), 2) TOTAL_PROFIT
+FROM MARKET_FACT MF 
+JOIN PROD_DIMEN PD 
+ON MF.PROD_ID = PD.PROD_ID;
+
+
+
+# 7. Count the total number of unique customers in January and how many of them came back every month over the entire year in 2011
+SELECT date_format(str_to_date(OD.ORDER_DATE, '%d-%m-%Y'), '%Y') Year, date_format(str_to_date(OD.ORDER_DATE, '%d-%m-%Y'), '%m') Month, 
+COUNT(DISTINCT CUST_ID) NO_OF_CUSTOMERS
+FROM MARKET_FACT MF 
+JOIN ORDERS_DIMEN OD 
+ON MF.ORD_ID = OD.ORD_ID 
+WHERE CUST_ID IN (SELECT DISTINCT CUST_ID
+FROM MARKET_FACT MF 
+JOIN ORDERS_DIMEN OD 
+ON MF.ORD_ID = OD.ORD_ID 
+WHERE date_format(str_to_date(OD.ORDER_DATE, '%d-%m-%Y'), '%m') = '01' 
+AND date_format(str_to_date(OD.ORDER_DATE, '%d-%m-%Y'), '%Y') = '2011') 
+AND date_format(str_to_date(OD.ORDER_DATE, '%d-%m-%Y'), '%Y') = '2011' 
+GROUP BY Month, Year;
+
+
+
+# 8. Retrieve month-by-month customer retention rate since the start of the business.(using views)
+/* 
+Tips:
+#1: Create a view where each user’s visits are logged by month, allowing for 
+the possibility that these will have occurred over multiple # years since 
+whenever business started operations
+# 2: Identify the time lapse between each visit. So, for each person and for each 
+month, we see when the next visit is.
+# 3: Calculate the time gaps between visits
+# 4: categorise the customer with time gap 1 as retained, >1 as irregular and 
+NULL as churned
+# 5: calculate the retention month wise
+*/
+CREATE VIEW CUST_RETN 
+AS 
+SELECT CUST_ID, TIMESTAMPDIFF(MONTH, '2008-12-01', ORDER_DATE) AS ORDERED_MONTH
+FROM (SELECT DISTINCT MF.CUST_ID, str_to_date(OD.ORDER_DATE, '%d-%m-%Y') ORDER_DATE
+FROM MARKET_FACT MF 
+JOIN ORDERS_DIMEN OD 
+ON MF.ORD_ID = OD.ORD_ID) A 
+GROUP BY CUST_ID, ORDERED_MONTH 
+ORDER BY CUST_ID, ORDERED_MONTH; # Assuming business start date as 01-12-2008 (Dec 1st, 2008)
+
+SELECT * FROM CUST_RETN;
+
+SELECT ORDERED_MONTH, 
+ROUND((SUM(if(CUST_RETENTION_CATEG = 'Retained', 1, 0)) / COUNT(DISTINCT CUST_ID)) * 100, 2) AS RETENTION_RATE 
+FROM (SELECT CUST_ID, ORDERED_MONTH, TIME_LAPSE, TIME_GAP, 
+CASE 
+WHEN TIME_GAP = 1 
+THEN 'Retained' 
+WHEN TIME_GAP > 1 
+THEN 'Irregular' 
+WHEN TIME_GAP IS NULL 
+THEN 'Churned' 
+END AS CUST_RETENTION_CATEG 
+FROM (SELECT CUST_ID, ORDERED_MONTH, TIME_LAPSE, (TIME_LAPSE - ORDERED_MONTH) TIME_GAP 
+FROM (SELECT CUST_ID, ORDERED_MONTH, LEAD(ORDERED_MONTH) OVER(PARTITION BY CUST_ID ORDER BY CUST_ID, ORDERED_MONTH) TIME_LAPSE
+FROM CUST_RETN) TIME_LAPSE_CALC) TIME_GAP_CALC) CUST_CATEG_CALC 
+GROUP BY ORDERED_MONTH; 
